@@ -30,7 +30,8 @@ def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(secu
     try:
         secret_key = os.getenv("JWT_SECRET")
         payload = jwt.decode(token, secret_key, algorithms=["HS256"])
-        user_id = payload.get("user_id") or payload.get("sub")
+        user_id = payload.get("_id") or payload.get("user_id") or payload.get("sub")
+        
         if not user_id:
             raise HTTPException(status_code=401, detail="User ID not found in token")
         return f"user_{user_id}".replace("-", "_")
