@@ -221,7 +221,7 @@ def chat(
 
         response = get_llm_response()
         answer = response.choices[0].message.content
-        return {"answer": {"text": answer}, "chunks_used": len(results)}
+        return {"answer": answer}
 
     except Exception as e:
         logger.error(f"[CHAT] Pipeline failed: {str(e)}")
