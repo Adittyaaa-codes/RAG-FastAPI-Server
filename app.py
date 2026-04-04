@@ -4,6 +4,7 @@ import uuid
 import jwt
 
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
+from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -221,7 +222,7 @@ def chat(
 
         response = get_llm_response()
         answer = response.choices[0].message.content
-        return {"answer": answer}
+        return PlainTextResponse(answer)
 
     except Exception as e:
         logger.error(f"[CHAT] Pipeline failed: {str(e)}")
