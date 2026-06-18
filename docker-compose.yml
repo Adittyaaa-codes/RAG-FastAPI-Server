@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------
+  # 1. Qdrant Vector Database for storing user materials
+  # ----------------------------------------
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant_prod
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      # This volume ensures your vectors are saved to the server's hard drive.
+      # If the container restarts, you won't lose your data.
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    networks:
+      - rag_network
+
+  # ----------------------------------------
+  # 1.1. Qdrant Vector Database for storing user preferences
+  # ----------------------------------------
+  qdrant2:
+    image: qdrant/qdrant:latest
+    container_name: qdrant_ltm
+    ports:
+      - "6433:6333"   # Changed host port to 6433 to avoid conflict
+      - "6434:6334"   # Changed host port to 6434 to avoid conflict
+    volumes:
+      - qdrant_ltm_data:/qdrant/storage  # Separate volume to avoid corruption
+    restart: unless-stopped
+    networks:
+      - rag_network
+
+  # ----------------------------------------
+  # 2. FastAPI Backend (RAG Server)
+  # ----------------------------------------
+  api:
+    build: .
+    container_name: fastapi_prod
+    ports:
+      - "8000:8000"
+    environment:
+      # Inside docker-compose, containers talk to each other using their service name.
+      # So we point the API to "http://qdrant:6333" instead of localhost!
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_LTM_URL=http://qdrant2:6333
+      
+      # Pass through your API keys (you will set these securely on the AWS server)
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+    
+    volumes:
+      # Optional: Map the model cache to a volume so models don't re-download
+      - fastembed_cache:/app/model_cache
+    
+    depends_on:
+      - qdrant
+      - qdrant2
+    restart: unless-stopped
+    networks:
+      - rag_network
+
+# Define persistent storage volumes
+volumes:
+  qdrant_data:
+  qdrant_ltm_data:   
+  fastembed_cache:
+
+# Define an isolated network for security
+networks:
+  rag_network:
+    driver: bridge
