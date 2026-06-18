@@ -15,7 +15,21 @@ from pydantic import BaseModel
 load_dotenv()
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+ALLOWED_ORIGINS = [
+    "https://studybot99.onrender.com",  # Production frontend
+    "http://localhost:5173",            # Vite dev server
+    "http://localhost:3000",            # Alternative dev port
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 security = HTTPBearer()
 
