@@ -112,6 +112,9 @@ async def chat(req, collection_name: str):
         }
     }
 
+    # Mutable container to share final_text between sync generator and async chat()
+    result_container = {"final_text": "", "history": []}
+
     def event_generator():
         full_answer_parts: list[str] = []
         processed_up_to: int = 0
@@ -289,25 +292,38 @@ async def chat(req, collection_name: str):
                 except Exception as e:
                     logger.error(f"[LTM] Background memory extraction dispatch failed: {e}")
 
-            if mongo_db is not None:
-                try:
-                    prompt_chars = sum(len(m.get("content", "")) for m in history)
-                    response_chars = len(final_text)
-                    estimated_tokens = max(1, (prompt_chars + response_chars) // 4)
-                    
-                    await mongo_db.users.update_one(
-                        {"_id": ObjectId(user_id_str)},
-                        {"$inc": {"tokensUsed": estimated_tokens}}
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to update token usage for user {user_id_str}: {e}")
+            # Store results for async post-processing outside this sync generator
+            result_container["final_text"] = final_text
+            result_container["history"] = history
 
         except Exception as e:
             logger.error(f"Chat stream error: {e}", exc_info=True)
             yield _sse({"type": "error", "detail": str(e)})
 
+    async def async_generator():
+        """Wraps sync event_generator in async, then does async MongoDB update after stream."""
+        for chunk in event_generator():
+            yield chunk
+
+        # After stream ends, update token usage in MongoDB asynchronously
+        if mongo_db is not None:
+            try:
+                final_text = result_container["final_text"]
+                history = result_container["history"]
+                prompt_chars = sum(len(m.get("content", "")) for m in history)
+                response_chars = len(final_text)
+                estimated_tokens = max(1, (prompt_chars + response_chars) // 4)
+
+                await mongo_db.users.update_one(
+                    {"_id": ObjectId(user_id_str)},
+                    {"$inc": {"tokensUsed": estimated_tokens}}
+                )
+                logger.info(f"[TOKENS] Updated {estimated_tokens} tokens for user {user_id_str}")
+            except Exception as e:
+                logger.error(f"Failed to update token usage for user {user_id_str}: {e}")
+
     return StreamingResponse(
-        event_generator(),
+        async_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

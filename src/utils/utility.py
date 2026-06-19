@@ -30,8 +30,10 @@ if not mongo_url:
     mongo_db = None
 else:
     mongo_client = AsyncIOMotorClient(mongo_url)
-    # The database name should be extracted from the URL if possible, or fallback to 'test'
-    mongo_db = mongo_client.get_database() # Motor defaults to DB in connection string
+    try:
+        mongo_db = mongo_client.get_database() # Uses DB from connection string
+    except Exception:
+        mongo_db = mongo_client.get_database("test") # Fallback if URL lacks DB name
 
 EMBEDDING_MODEL = "gemini-embedding-001"
 EMBEDDING_DIM = 3072
