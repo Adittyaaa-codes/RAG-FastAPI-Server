@@ -2,15 +2,6 @@
 
 StudyBot lets students upload their notes and documents, then chat with an AI that answers questions **directly from their own content** — not from the internet.
 
----
-
-## 🔗 Repositories
-
-- **Frontend** (React + Vite + TypeScript) → [github.com/Adittyaaa-codes/Frontend](https://github.com/Adittyaaa-codes/Frontend)
-- **Backend** (Node.js + Express + MongoDB) → [github.com/Adittyaaa-codes/Backend](https://github.com/Adittyaaa-codes/Backend)
-- **AI Server** (FastAPI + LangChain + Qdrant + OpenAI) → This repo
-
----
 
 ## How It Works
 

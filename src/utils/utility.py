@@ -21,6 +21,18 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 genai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
+# Initialize MongoDB connection for token tracking
+from motor.motor_asyncio import AsyncIOMotorClient
+mongo_url = os.getenv("MONGO_URL")
+if not mongo_url:
+    logger.warning("MONGO_URL not set in environment. Token tracking will be disabled.")
+    mongo_client = None
+    mongo_db = None
+else:
+    mongo_client = AsyncIOMotorClient(mongo_url)
+    # The database name should be extracted from the URL if possible, or fallback to 'test'
+    mongo_db = mongo_client.get_database() # Motor defaults to DB in connection string
+
 EMBEDDING_MODEL = "gemini-embedding-001"
 EMBEDDING_DIM = 3072
 

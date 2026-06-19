@@ -4,8 +4,10 @@ import os
 from fastapi.responses import StreamingResponse
 from langchain_groq import ChatGroq
 from src.deep_agents.deep_agents import agent
-from src.utils.utility import logger
+from src.utils.utility import logger, mongo_db
 from src.utils.ltm_utils import search_ltm, extract_and_save_memories
+from bson import ObjectId
+from fastapi import HTTPException
 
 def generate_rolling_summary(old_messages: list) -> str:
     if not old_messages:
@@ -86,6 +88,22 @@ async def chat(req, collection_name: str):
       {"type": "done",        "full_text": "..."}
       {"type": "error",       "detail": "..."}
     """
+    ltm_collection_name = f"user_{collection_name}"
+    user_id_str = collection_name
+
+    if mongo_db is not None:
+        try:
+            user_doc = await mongo_db.users.find_one({"_id": ObjectId(user_id_str)})
+            if user_doc:
+                tokens_used = user_doc.get("tokensUsed", 0)
+                token_limit = user_doc.get("tokenLimit", 500000)
+                if tokens_used >= token_limit:
+                    raise HTTPException(status_code=403, detail="Token limit exhausted. You have used all your allocated AI tokens.")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to check token limit for user {user_id_str}: {e}")
+
     config = {
         "configurable": {
             "collection_name": collection_name,
@@ -94,11 +112,10 @@ async def chat(req, collection_name: str):
         }
     }
 
-    ltm_collection_name = f"user_ltm_{collection_name}"
-
     def event_generator():
         full_answer_parts: list[str] = []
         processed_up_to: int = 0
+        history = []
 
         try:
             raw_history = req.messages if isinstance(req.messages, list) else []
@@ -112,8 +129,6 @@ async def chat(req, collection_name: str):
             
             old_messages = clean_history[:-8]
             recent_history = clean_history[-8:]
-            
-            history = []
             
             try:
                 ltm_memories = search_ltm(ltm_collection_name, req.query, limit=3)
@@ -235,8 +250,6 @@ async def chat(req, collection_name: str):
                         text = _extract_text(raw)
 
                         if not text:
-                            # Fallback: check additional_kwargs for providers that
-                            # store text outside .content (e.g. some Gemini builds)
                             extra = getattr(msg, "additional_kwargs", {})
                             text = _extract_text(
                                 extra.get("text") or
@@ -275,6 +288,19 @@ async def chat(req, collection_name: str):
                     threading.Thread(target=_bg_task, daemon=True).start()
                 except Exception as e:
                     logger.error(f"[LTM] Background memory extraction dispatch failed: {e}")
+
+            if mongo_db is not None:
+                try:
+                    prompt_chars = sum(len(m.get("content", "")) for m in history)
+                    response_chars = len(final_text)
+                    estimated_tokens = max(1, (prompt_chars + response_chars) // 4)
+                    
+                    await mongo_db.users.update_one(
+                        {"_id": ObjectId(user_id_str)},
+                        {"$inc": {"tokensUsed": estimated_tokens}}
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update token usage for user {user_id_str}: {e}")
 
         except Exception as e:
             logger.error(f"Chat stream error: {e}", exc_info=True)
