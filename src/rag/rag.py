@@ -109,7 +109,7 @@ def rag_search(
                                 model="BAAI/bge-small-en-v1.5",
                             ),
                             using="dense",
-                            limit=limit * 2,         # over-fetch before fusion
+                            limit=limit * 2,        
                         ),
                         models.Prefetch(
                             query=models.Document(

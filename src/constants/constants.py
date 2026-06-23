@@ -1,4 +1,10 @@
 MODEL="gpt-4o-mini"
+SECONDARY_MODEL ="llama-3.1-8b-instant"
+TEMPARATURE=0
+
+DENSE_MODEL  = "BAAI/bge-small-en-v1.5"
+SPARSE_MODEL = "Qdrant/bm25"
+
 SYSTEM_PROMPT='''\
 You are StudyBot — a smart AI tutor for students.
 

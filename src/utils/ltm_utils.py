@@ -8,9 +8,9 @@ from qdrant_client import QdrantClient
 from qdrant_client import models
 from qdrant_client.models import PointStruct, VectorParams, Distance
 
-from src.utils.utility import logger, retry_config
+from src.utils.utility import logger
 
-DENSE_MODEL = "BAAI/bge-small-en-v1.5"
+from src.constants.constants import DENSE_MODEL
 
 def make_qdrant_ltm_client() -> QdrantClient:
     """
@@ -22,7 +22,7 @@ def make_qdrant_ltm_client() -> QdrantClient:
     logger.info(f"[LTM] Connecting to Qdrant LTM at: {url}")
     return QdrantClient(url=url, api_key=api_key)
 
-@retry_config("Qdrant Ensure LTM Collection")
+
 def ensure_ltm_collection(client: QdrantClient, collection_name: str):
     """
     Ensures that the LTM collection for a given user exists.
@@ -256,5 +256,3 @@ def extract_and_save_memories(messages: list, collection_name: str):
 
     except Exception as e:
         logger.error(f"[LTM] Memory extraction task failed: {e}", exc_info=True)
-
-

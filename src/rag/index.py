@@ -6,10 +6,7 @@ from fastapi import HTTPException
 from qdrant_client import models
 from qdrant_client.models import PointStruct
 from src.utils.utility import load_and_chunk, ensure_collection, make_qdrant_client
-
-# FastEmbed model IDs — must match what's used in rag.py hybrid search
-DENSE_MODEL  = "BAAI/bge-small-en-v1.5"
-SPARSE_MODEL = "Qdrant/bm25"
+from src.constants.constants import DENSE_MODEL,SPARSE_MODEL
 
 async def index(file, collection_name: str, subject: str, chapter: str):
     tmp_dir = tempfile.gettempdir()
@@ -36,15 +33,15 @@ async def index(file, collection_name: str, subject: str, chapter: str):
             PointStruct(
                 id=str(uuid.uuid4()),
                 vector={
-                    "dense":  models.Document(text=text, model=DENSE_MODEL),
+                    "dense": models.Document(text=text, model=DENSE_MODEL),
                     "sparse": models.Document(text=text, model=SPARSE_MODEL),
                 },
                 payload={
-                    "text":             text,
-                    "subject":          subject,
-                    "chapter":          chapter,
-                    "source":           file.filename,
-                    "user_collection":  collection_name,
+                    "text": text,
+                    "subject": subject,
+                    "chapter": chapter,
+                    "source": file.filename,
+                    "user_collection": collection_name,
                 },
             )
             for text in texts
@@ -58,8 +55,8 @@ async def index(file, collection_name: str, subject: str, chapter: str):
         count = qdrant_client.count(collection_name=collection_name).count
 
         return {
-            "message":    "indexed",
-            "chunks":     len(points),
+            "message": "indexed",
+            "chunks": len(points),
             "total_in_db": count,
         }
 

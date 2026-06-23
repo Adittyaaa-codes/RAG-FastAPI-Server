@@ -1,75 +1,11 @@
 import json
-import asyncio
-import os
 from fastapi.responses import StreamingResponse
-from langchain_groq import ChatGroq
 from src.deep_agents.deep_agents import agent
 from src.utils.utility import logger, mongo_db
 from src.utils.ltm_utils import search_ltm, extract_and_save_memories
 from bson import ObjectId
 from fastapi import HTTPException
-
-def generate_rolling_summary(old_messages: list) -> str:
-    if not old_messages:
-        return ""
-    try:
-        llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
-        text_to_summarize = "\n".join([f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in old_messages])
-        prompt = (
-            "Summarize the following chat history. Focus on key facts, user preferences, "
-            "and topics discussed. The summary MUST be a maximum of 200 words.\n\n"
-            f"{text_to_summarize}"
-        )
-        response = llm.invoke(prompt)
-        return response.content.strip()
-    except Exception as e:
-        logger.error(f"Failed to generate rolling summary: {e}")
-        return ""
-
-
-def _extract_text(content) -> str:
-    """
-    Safely extract a plain string from any LangChain message content.
-    Handles: str, list[str], list[{"type":"text","text":"..."}], etc.
-    """
-    if not content:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-            elif isinstance(item, dict):
-                parts.append(item.get("text", ""))
-            else:
-                parts.append(str(item))
-        return "".join(parts)
-    return str(content)
-
-
-def _sse(event: dict) -> str:
-    return f"data: {json.dumps(event)}\n\n"
-
-
-def _is_ai_message(msg) -> bool:
-    t = type(msg).__name__
-    if "AI" in t or "Assistant" in t:
-        return True
-    if isinstance(msg, dict):
-        return msg.get("role") in ("assistant", "ai")
-    return False
-
-
-def _is_tool_message(msg) -> bool:
-    t = type(msg).__name__
-    if "Tool" in t:
-        return True
-    if isinstance(msg, dict):
-        return msg.get("role") == "tool"
-    return False
-
+from src.utils.utility import extract_text,is_ai_message,is_tool_message,sse,generate_rolling_summary
 
 async def chat(req, collection_name: str):
     """
@@ -112,7 +48,6 @@ async def chat(req, collection_name: str):
         }
     }
 
-    # Mutable container to share final_text between sync generator and async chat()
     result_container = {"final_text": "", "history": []}
 
     def event_generator():
@@ -184,7 +119,7 @@ async def chat(req, collection_name: str):
                     logger.debug(
                         f"[STREAM] type={type(msg).__name__} "
                         f"tool_calls={bool(getattr(msg, 'tool_calls', None))} "
-                        f"content_len={len(_extract_text(getattr(msg, 'content', None)))}"
+                        f"content_len={len(extract_text(getattr(msg, 'content', None)))}"
                     )
 
                     tool_calls = getattr(msg, "tool_calls", None)
@@ -198,18 +133,18 @@ async def chat(req, collection_name: str):
                                 args = getattr(tc, "args", {}) or {}
                             if not isinstance(args, dict):
                                 args = {}
-                            yield _sse({
+                            yield sse({
                                 "type": "tool_call",
                                 "tool": tool_name,
                                 "query": args.get("query", ""),
                             })
                         continue
 
-                    if _is_tool_message(msg):
+                    if is_tool_message(msg):
                         tool_name = getattr(msg, "name", None) or (
                             msg.get("name") if isinstance(msg, dict) else None
                         )
-                        content_str = _extract_text(
+                        content_str = extract_text(
                             getattr(msg, "content", None) or
                             (msg.get("content") if isinstance(msg, dict) else None)
                         )
@@ -217,15 +152,15 @@ async def chat(req, collection_name: str):
                         if tool_name == "rag_search":
                             try:
                                 result = json.loads(content_str)
-                                hits                  = result.get("total_hits", 0) if isinstance(result, dict) else 0
-                                has_ctx               = result.get("has_context", False) if isinstance(result, dict) else False
-                                ragas_score           = result.get("ragas_score", 0.0) if isinstance(result, dict) else 0.0
-                                ragas_cp              = result.get("ragas_context_precision", 0.0) if isinstance(result, dict) else 0.0
-                                ragas_faith           = result.get("ragas_faithfulness", 0.0) if isinstance(result, dict) else 0.0
-                                ragas_verdict         = result.get("ragas_verdict", "") if isinstance(result, dict) else ""
+                                hits = result.get("total_hits", 0) if isinstance(result, dict) else 0
+                                has_ctx = result.get("has_context", False) if isinstance(result, dict) else False
+                                ragas_score = result.get("ragas_score", 0.0) if isinstance(result, dict) else 0.0
+                                ragas_cp = result.get("ragas_context_precision", 0.0) if isinstance(result, dict) else 0.0
+                                ragas_faith = result.get("ragas_faithfulness", 0.0) if isinstance(result, dict) else 0.0
+                                ragas_verdict = result.get("ragas_verdict", "") if isinstance(result, dict) else ""
                             except Exception:
                                 hits, has_ctx, ragas_score, ragas_cp, ragas_faith, ragas_verdict = 0, False, 0.0, 0.0, 0.0, ""
-                            yield _sse({
+                            yield sse({
                                 "type": "tool_result",
                                 "tool": "rag_search",
                                 "hits": hits,
@@ -243,18 +178,18 @@ async def chat(req, collection_name: str):
                                 n = len(result.get("results", [])) if isinstance(result, dict) else 0
                             except Exception:
                                 n = 0
-                            yield _sse({"type": "tool_result", "tool": "web_search", "results": n})
+                            yield sse({"type": "tool_result", "tool": "web_search", "results": n})
                         continue
 
-                    if _is_ai_message(msg):
+                    if is_ai_message(msg):
                         raw = getattr(msg, "content", None) or (
                             msg.get("content") if isinstance(msg, dict) else None
                         )
-                        text = _extract_text(raw)
+                        text = extract_text(raw)
 
                         if not text:
                             extra = getattr(msg, "additional_kwargs", {})
-                            text = _extract_text(
+                            text = extract_text(
                                 extra.get("text") or
                                 extra.get("output") or
                                 extra.get("answer") or ""
@@ -270,14 +205,14 @@ async def chat(req, collection_name: str):
                             logger.debug(f"[STREAM] Incremental capture: '{new_chars}'")
                             for char in new_chars:
                                 full_answer_parts.append(char)
-                                yield _sse({"type": "token", "content": char})
+                                yield sse({"type": "token", "content": char})
 
             final_text = "".join(full_answer_parts)
             if not final_text:
                 logger.error("[STREAM] No answer found in any chunk")
-                yield _sse({"type": "error", "detail": "Agent returned an empty response."})
+                yield sse({"type": "error", "detail": "Agent returned an empty response."})
             else:
-                yield _sse({"type": "done", "full_text": final_text})
+                yield sse({"type": "done", "full_text": final_text})
                 
                 messages_to_analyze = history + [{"role": "assistant", "content": final_text}]
                 try:
@@ -292,20 +227,18 @@ async def chat(req, collection_name: str):
                 except Exception as e:
                     logger.error(f"[LTM] Background memory extraction dispatch failed: {e}")
 
-            # Store results for async post-processing outside this sync generator
             result_container["final_text"] = final_text
             result_container["history"] = history
 
         except Exception as e:
             logger.error(f"Chat stream error: {e}", exc_info=True)
-            yield _sse({"type": "error", "detail": str(e)})
+            yield sse({"type": "error", "detail": str(e)})
 
     async def async_generator():
         """Wraps sync event_generator in async, then does async MongoDB update after stream."""
         for chunk in event_generator():
             yield chunk
 
-        # After stream ends, update token usage in MongoDB asynchronously
         if mongo_db is not None:
             try:
                 final_text = result_container["final_text"]

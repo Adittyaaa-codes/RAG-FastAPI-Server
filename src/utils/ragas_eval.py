@@ -21,25 +21,20 @@ from langchain_groq import ChatGroq
 from ragas import SingleTurnSample
 from ragas.llms import LangchainLLMWrapper
 from ragas.metrics import LLMContextPrecisionWithoutReference, Faithfulness
-
 from src.utils.utility import logger
 
-# ── shared evaluator LLM (fast, cheap, good enough for scoring) ────────────
-_GROQ_MODEL = "llama-3.1-8b-instant"
-_evaluator_llm: Optional[LangchainLLMWrapper] = None
+from src.constants.constants import TEMPARATURE
+GROQ_MODEL = "llama-3.1-8b-instant"
 
-
-def _get_evaluator_llm() -> LangchainLLMWrapper:
+def _get_evaluator_llm():
     """Lazy-init the ragas-wrapped Groq LLM."""
     global _evaluator_llm
     if _evaluator_llm is None:
         _evaluator_llm = LangchainLLMWrapper(
-            ChatGroq(model=_GROQ_MODEL, temperature=0)
+            ChatGroq(model=GROQ_MODEL, temperature=TEMPARATURE)
         )
     return _evaluator_llm
 
-
-# ── internal async scorer ──────────────────────────────────────────────────
 async def _async_score(
     query: str,
     contexts: list[str],
@@ -90,8 +85,6 @@ async def _async_score(
         "combined": combined,
     }
 
-
-# ── public synchronous entry point ─────────────────────────────────────────
 def evaluate_rag(
     query: str,
     context_text: str,
