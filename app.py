@@ -7,7 +7,6 @@ from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.utils.utility import make_qdrant_client, ensure_collection, embed_text, embed_texts, load_and_chunk, logger, retry_config
 from openai import OpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel
